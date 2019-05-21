@@ -1,0 +1,152 @@
+#! /usr/bin/env python
+
+import sys
+import subprocess
+import numpy as np
+import os
+import io
+import re
+import mmap
+
+
+#atomicEnergyFile = "/global/home/users/adam_rettig/polar/H2/atomic/atomicEnergies"
+#atomicEnergies = open(atomicEnergyFile).read()
+jobMatchPattern = "Welcome to Q-Chem"
+jobMatchOffset = len(jobMatchPattern)
+
+
+
+atom1 = sys.argv[-2]
+atom2 = sys.argv[-1]
+
+#direc = os.getcwd().split("/")[-1]
+infileNames = sys.argv[1:-2]
+
+
+
+
+def getNRoots(text):
+    rootsLine = re.findall("cis_n_roots.*",text)
+    rootsLine += re.findall("EE_STATES .*", text)
+    rootsLine += re.findall("CAS_N_ROOTS .*", text)
+    if(len(rootsLine) == 0):
+        singletsLine = re.findall("EE_SINGLETS .*", text)
+        tripletsLine = re.findall("EE_TRIPLETS .*", text)
+        if(len(singletsLine) + len(tripletsLine) == 0):
+            return None
+        else:
+            nroots = int(singletsLine[0].split()[-1]) + int(tripletsLine[0].split()[-1])
+    else:
+        nroots = int(rootsLine[0].split()[-2])
+
+    return nroots
+
+def getJobData(text):
+    # get all energies output by jobs in this file
+    ESMatches = re.findall(r'^ Truncated CI.*', text, flags=re.MULTILINE)
+    if(ESMatches == []):
+        ESMatches = re.findall(r'^ CAS-SCF.*', text, flags=re.MULTILINE)
+        if(ESMatches == []):
+            return None
+    ESenergies = [float(line.split()[-3]) for line in ESMatches]
+    ESspin = [float(line.split(" ")[-1]) for line in ESMatches]
+
+
+    return (ESenergies, ESspin)
+
+
+
+def getDist(text):
+    distMatches =  re.findall("R =.*", text)
+    if(distMatches == []):
+        distMatches = re.findall("H 0 0.*", text)
+        if(distMatches == []):
+            return None
+
+    dist = float(distMatches[0].split()[-1])*2
+    return dist
+
+
+
+for infileName in infileNames:
+    print(infileName)
+
+    dists = []
+    Energies = []
+    spins = []
+    nRemoved = 0
+
+    
+    # loop over jobs in file
+    with open(infileName, 'r') as inFile:
+        # mmap file
+        mFile = mmap.mmap(inFile.fileno(), 0, prot=mmap.PROT_READ)
+
+        #loop over jobs in file
+        jobStart = 0
+        while(jobStart < mFile.size()):
+            # read next job into memory
+            mFile.seek(jobStart)            
+            jobEnd = mFile.find(jobMatchPattern)
+            if(jobEnd == -1):
+                jobEnd = mFile.size()
+            jobText = mFile.read(jobEnd - jobStart)
+            moleculeMatches = re.findall("\$molecule.*\$end", jobText, flags=re.DOTALL)
+            if(len(moleculeMatches) > 0):
+                moleculeText = moleculeMatches[0]
+            else:
+                moleculeText = ""
+
+
+            # check if restricted triplet
+            nQuins = len(re.findall("Multiplicity: Quintet", jobText))
+
+            # get number of roots
+            nRoots = getNRoots(jobText)
+
+            # parse out data
+            jobDist = getDist(moleculeText)
+            jobData =  getJobData(jobText)
+            
+            if(jobData != None):
+                jobEnergies, jobSpins = jobData
+
+                # add data to lists
+                dists.append(jobDist)
+                Energies.append(jobEnergies)
+                spins.append(jobSpins[:nRoots])
+            else:
+                if(jobDist != None):
+                    nRemoved += 1
+                    print("Removed dist: %f" % jobDist)
+
+            
+            #move buffer pointer to start of next job:
+            jobStart = jobEnd + jobMatchOffset
+
+
+
+
+    print("removed %d failed jobs" % nRemoved)
+
+    # convert to np
+    dists = np.array(dists)
+    energies = np.array(Energies)
+    spins = np.array(spins)
+
+    print("Found %d different distances with %d energies each" % (energies.shape[0], energies.shape[1]))
+    print("outputtingenergies and spins")
+
+    # ready plot data
+    EPlotData = np.hstack((dists.reshape(-1,1), energies))
+
+    # output plot data
+    title = infileName[:-4]
+    print(EPlotData)
+    np.savetxt("%s_energyPlot.csv" % title, EPlotData, delimiter=',')
+
+    # output spins if not restricted
+    if(not np.all(spins == None)):
+        spinData = np.concatenate((dists.reshape(-1,1), spins), axis=1)
+        np.savetxt("%s_s2Plot.csv" % title, spinData, delimiter=',')
+        

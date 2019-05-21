@@ -1,0 +1,233 @@
+#! /usr/bin/env python
+
+import sys
+import subprocess
+import numpy as np
+import os
+import io
+import re
+import mmap
+
+
+#atomicEnergyFile = "/global/home/users/adam_rettig/polar/H2/atomic/atomicEnergies"
+#atomicEnergies = open(atomicEnergyFile).read()
+jobMatchPattern = "Welcome to Q-Chem"
+jobMatchOffset = len(jobMatchPattern)
+
+
+
+atom1 = sys.argv[-2]
+atom2 = sys.argv[-1]
+
+#direc = os.getcwd().split("/")[-1]
+infileNames = sys.argv[1:-2]
+
+
+
+
+def getNRoots(text):
+    rootsLine = re.findall("cis_n_roots.*",text)
+    rootsLine += re.findall("EE_STATES .*", text)
+    if(len(rootsLine) == 0):
+        singletsLine = re.findall("EE_SINGLETS .*", text)
+        tripletsLine = re.findall("EE_TRIPLETS .*", text)
+        if(len(singletsLine) + len(tripletsLine) == 0):
+            return None
+        else:
+            nroots = int(singletsLine[0].split()[-1]) + int(tripletsLine[0].split()[-1])
+    else:
+        nroots = int(rootsLine[0].split()[-1])
+    
+    return nroots
+    
+def getEnergies(text):
+    # get all energies output by jobs in this file
+    GSenergyLinePattern = re.compile(r"Total energy in.*")
+    GSenergyMatches = re.findall(GSenergyLinePattern, text)
+    if(GSenergyMatches == []):
+        GSEnergy = None
+    else:
+        GSEnergy = float(GSenergyMatches[0].split()[-1])
+
+    ESenergyLinePattern = re.compile(r"Total energy for state.*")
+    ESenergyMatches = re.findall(ESenergyLinePattern, text)
+
+    ESenergyLinePattern2 = re.compile(r"Total energy .* a\.u\.")
+    ESenergyMatches += re.findall(ESenergyLinePattern2, text)
+    if(len(ESenergyMatches) == 0):
+        #check if CAS-SCF
+        energyMatches = re.findall("CAS-SCF      .*", text)
+        if(len(energyMatches) > 0):
+            energies = [float(match.split()[-3]) for match in energyMatches]
+            return (energies[0], energies[1:], [0.0])
+        else:
+            return None
+
+    # if restricted triplet, get rid of quintets
+    if(nQuins > 0):
+        ESenergyMatches = ESenergyMatches[:-nQuins]
+
+    ESenergies = [float(x.split()[-2]) for x in ESenergyMatches]
+
+    # probably means TDHF failed
+    if(len(ESenergies) < nRoots*2):
+        CISEnergies = ESenergies
+        TDHFEnergies = [0.0] * len(CISEnergies)
+    else:
+        CISEnergies = ESenergies[:len(ESenergies)/2]
+        TDHFEnergies = ESenergies[len(ESenergies)/2:]
+
+    return (GSEnergy, CISEnergies, TDHFEnergies)
+
+def getHessianEigen(text):
+    # get the lowest eigenvalue of the Hessian from stability analysis
+    eigenPattern = re.compile(r'(converged_eigenvalues.*\n( +[0-9.-]+\n)*Threshold for negative)', re.MULTILINE)
+    eigenMatches = re.findall(eigenPattern, text)
+    if(len(eigenMatches) == 0):
+        return None
+
+    stableMatch = eigenMatches[-1][0]
+    eigenvalsText = stableMatch.split("\n")[1:-1]
+    eigenvals = [float(i) for i in eigenvalsText]
+
+    return min(eigenvals)
+
+def getSpins(text):
+    # get the <s^2> value for this job
+    spinLinePattern = re.compile(r"S\^2.*")
+    spinMatches = re.findall(spinLinePattern, text)
+    if(len(spinMatches) == 0):
+        return None
+    
+    GSspin = float(spinMatches[0].split()[-1])
+
+    ESspinLinePattern = re.compile(r"S\*\*2.*")
+    ESspinMatches = re.findall(ESspinLinePattern, text)
+    ESspinArray = [float(match.split()[-1]) for match in ESspinMatches]
+    
+    s2s = [GSspin] + ESspinArray
+    return s2s
+
+def getDist(text):
+    floatPattern = "-*[0-9]+\.*[0-9]*"
+    distPattern1 = re.compile(atom1 + "\s+" + floatPattern + "\s+" + floatPattern + "\s+" + floatPattern)
+    distPattern2 = re.compile(atom2 + "\s+" + floatPattern + "\s+" + floatPattern + "\s+" + floatPattern)
+
+    distMatch1 = re.findall(distPattern1, text)
+    distMatch2 = re.findall(distPattern2, text)
+
+    if(len(distMatch1) == 0 and len(distMatch2) == 0):
+        return None
+    elif(len(distMatch1) == 0 or (atom1 == atom2 and len(distMatch1) == 1)):
+        return float(distMatch2[0].split()[2])
+    elif(len(distMatch2) == 0):
+        return float(distMatch1[0].split()[2])
+    else:
+        ind2 = 0
+        if(atom1 == atom2):
+            ind2 = 1
+        return abs(float(distMatch2[ind2].split()[-1]) - float(distMatch1[0].split()[-1]))
+        
+
+
+for infileName in infileNames:
+    print(infileName)
+
+    dists = []
+    CISEnergies = []
+    TDHFEnergies = []
+    spins = []
+    eigens = []
+    nRemoved = 0
+
+    
+    # loop over jobs in file
+    with open(infileName, 'r') as inFile:
+        # mmap file
+        mFile = mmap.mmap(inFile.fileno(), 0, prot=mmap.PROT_READ)
+
+        #loop over jobs in file
+        jobStart = 0
+        while(jobStart < mFile.size()):
+            # read next job into memory
+            mFile.seek(jobStart)            
+            jobEnd = mFile.find(jobMatchPattern)
+            if(jobEnd == -1):
+                jobEnd = mFile.size()
+            jobText = mFile.read(jobEnd - jobStart)
+            moleculeMatches = re.findall("\$molecule.*\$end", jobText, flags=re.DOTALL)
+            if(len(moleculeMatches) > 0):
+                moleculeText = moleculeMatches[0]
+            else:
+                moleculeText = ""
+
+
+            # check if restricted triplet
+            nQuins = len(re.findall("Multiplicity: Quintet", jobText))
+
+            # get number of roots
+            nRoots = getNRoots(jobText)
+
+            # parse out data
+            jobDist = getDist(moleculeText)
+            jobEnergyData =  getEnergies(jobText)
+            jobSpins = getSpins(jobText)
+            jobEigen = 1 #getHessianEigen(jobText)
+            
+            if(jobEnergyData != None and jobEigen != None):
+                jobGSEnergy, jobCISEnergies, jobTDHFEnergies = jobEnergyData
+
+                # trim extra roots
+                jobCISEnergies = jobCISEnergies[:nRoots]
+                jobTDHFEnergies = jobTDHFEnergies[:nRoots]
+
+                # add GS Energy
+                jobCISEnergies.insert(0,jobGSEnergy)
+                jobTDHFEnergies.insert(0,jobGSEnergy)
+
+                # add data to lists
+                dists.append(jobDist)
+                CISEnergies.append(jobCISEnergies)
+                TDHFEnergies.append(jobTDHFEnergies)
+                spins.append(jobSpins)
+                eigens.append(jobEigen)
+            else:
+                if(jobDist != None):
+                    nRemoved += 1
+                    print("Removed dist: %f" % jobDist)
+
+            
+            #move buffer pointer to start of next job:
+            jobStart = jobEnd + jobMatchOffset
+
+
+
+
+    print("removed %d failed jobs" % nRemoved)
+
+    # convert to np
+    dists = np.array(dists)
+    CISEnergies = np.array(CISEnergies)
+    TDHFEnergies = np.array(TDHFEnergies)
+    spins = np.array(spins)
+    eigens = np.array(eigens)
+
+    print("Found %d different distances with %d energies each" % (CISEnergies.shape[0], CISEnergies.shape[1]))
+    print("outputting CIS energies and TDHF energies")
+
+    # ready plot data
+    CISPlotData = np.hstack((dists.reshape(-1,1), CISEnergies))
+    TDHFPlotData = np.hstack((dists.reshape(-1,1), TDHFEnergies))
+    eigenData = np.hstack((dists.reshape(-1,1), eigens.reshape(-1,1)))
+
+    # output plot data
+    title = infileName[:-4]
+    np.savetxt("%s_CISEnergyPlot.csv" % title, CISPlotData, delimiter=',')
+#    np.savetxt("%s_TDHFEnergyPlot.csv" % title, TDHFPlotData, delimiter=',')
+    np.savetxt("%s_eigenPlot.csv" % title, eigenData, delimiter=',')
+
+    # output spins if not restricted
+#    if(not np.all(spins == None)):
+#        spinData = np.hstack((dists.reshape(-1,1), spins))
+#        np.savetxt("%s_s2Plot.csv" % title, spinData, delimiter=',')
+        

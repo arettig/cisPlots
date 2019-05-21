@@ -522,6 +522,14 @@ xmin = 1.7
 xmax = 5.0
 ymin = -581.4
 ymax = -580.8
+
+xmin_in = 2.3
+xmax_in = 2.6
+ymin_in = -581.35
+ymax_in = -581.32
+in_loc = 0.75
+in_size = 0.22
+
 nStates = 3
 
 sf_t_CIS_Edata = np.genfromtxt(open("silane/daugdz/silane_sf_t_CISEnergyPlot.csv", "r"), delimiter=",")
@@ -535,24 +543,40 @@ Energies_sf_CIS = sf_t_CIS_Edata[:,2:]
 maxSpin = np.max(spins)
 minSpin = np.min(spins)
 
+# axes and inset axes
 fig, ax = plt.subplots()
+ax_in = ax.inset_axes([in_loc, in_loc, in_size, in_size])
 
 for i in range(nStates):
     points = np.concatenate([x.reshape(-1,1), Energies_sf_CIS[:,i].reshape(-1,1)], axis=1).reshape(-1,1,2)
     segs = np.concatenate([points[:-1], points[1:]],axis=1)
-    colors = [(1-s,0,s) for s in spins[:-1,i]]
 
     lc = LineCollection(segs, array=spins[:-1,i], cmap=cmap)
     lc.set_linewidth(3)
-    ax.add_collection(lc)
     lc.set_clim(minSpin, maxSpin)
+    lc.set_capstyle('round')
+    ax.add_collection(lc)
+
+    lc2 = LineCollection(segs, array=spins[:-1,i], cmap=cmap)
+    lc2.set_linewidth(3)
+    lc2.set_clim(minSpin, maxSpin)
+    lc2.set_capstyle('round')
+    ax_in.add_collection(lc2)
+
 
 ax.set_xlabel("r ($\AA$)")
 ax.set_ylabel("E (a.u.)")
 ax.set_xlim(xmin, xmax)
 ax.set_ylim(ymin, ymax)
+plt.colorbar(lc).set_label(r'$\langle S^2 \rangle$')
 
-fig.colorbar(lc).set_label(r'$\langle S^2 \rangle$')
+ax_in.set_xlim(xmin_in, xmax_in)
+ax_in.set_ylim(ymin_in, ymax_in)
+ax_in.set_xticklabels('')
+ax_in.set_yticklabels('')
+ax.indicate_inset_zoom(ax_in)
+
+plt.tight_layout()
 plt.savefig("plots/silane_sf.eps", format="eps", dpi=1000)
 plt.clf()
 
@@ -573,7 +597,9 @@ mom_CIS = mom_Edata[:,2:]
 maxSpin = np.max(spins)
 minSpin = np.min(spins)
 
+# axes and inset axes
 fig, ax = plt.subplots()
+ax_in = ax.inset_axes([in_loc, in_loc, in_size, in_size])
 
 for i in range(nStates):
     points = np.concatenate([x2.reshape(-1,1), mom_CIS[:,i].reshape(-1,1)], axis=1).reshape(-1,1,2)
@@ -585,11 +611,24 @@ for i in range(nStates):
     ax.add_collection(lc)
     lc.set_clim(minSpin, maxSpin)
 
+    lc2 = LineCollection(segs, array=spins[:-1,i], cmap=cmap)
+    lc2.set_linewidth(3)
+    lc2.set_clim(minSpin, maxSpin)
+    lc2.set_capstyle('round')
+    ax_in.add_collection(lc2)
+
+
 ax.set_xlabel("r ($\AA$)")
 ax.set_ylabel("E (a.u.)")
 ax.set_xlim(xmin, xmax)
 ax.set_ylim(ymin, ymax)
 fig.colorbar(lc).set_label(r'$\langle S^2 \rangle$')
+
+ax_in.set_xlim(xmin_in, xmax_in)
+ax_in.set_ylim(ymin_in, ymax_in)
+ax_in.set_xticklabels('')
+ax_in.set_yticklabels('')
+ax.indicate_inset_zoom(ax_in)
 
 plt.tight_layout()
 plt.savefig("plots/silane_sf_mom.eps", format="eps", dpi=1000)

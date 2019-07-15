@@ -37,9 +37,9 @@ def getNRoots(text):
             nroots = int(singletsLine[0].split()[-1]) + int(tripletsLine[0].split()[-1])
     else:
         nroots = int(rootsLine[0].split()[-1])
-    
+
     return nroots
-    
+
 def getEnergies(text):
     # get all energies output by jobs in this file
     GSenergyLinePattern = re.compile(r"Total energy in.*")
@@ -98,13 +98,13 @@ def getSpins(text):
     spinMatches = re.findall(spinLinePattern, text)
     if(len(spinMatches) == 0):
         return None
-    
+
     GSspin = float(spinMatches[0].split()[-1])
 
     ESspinLinePattern = re.compile(r"S\*\*2.*")
     ESspinMatches = re.findall(ESspinLinePattern, text)
     ESspinArray = [float(match.split()[-1]) for match in ESspinMatches]
-    
+
     s2s = [GSspin] + ESspinArray
     return s2s
 
@@ -127,7 +127,7 @@ def getDist(text):
         if(atom1 == atom2):
             ind2 = 1
         return abs(float(distMatch2[ind2].split()[-1]) - float(distMatch1[0].split()[-1]))
-        
+
 
 
 for infileName in infileNames:
@@ -140,7 +140,7 @@ for infileName in infileNames:
     eigens = []
     nRemoved = 0
 
-    
+
     # loop over jobs in file
     with open(infileName, 'r') as inFile:
         # mmap file
@@ -150,7 +150,7 @@ for infileName in infileNames:
         jobStart = 0
         while(jobStart < mFile.size()):
             # read next job into memory
-            mFile.seek(jobStart)            
+            mFile.seek(jobStart)
             jobEnd = mFile.find(jobMatchPattern)
             if(jobEnd == -1):
                 jobEnd = mFile.size()
@@ -173,7 +173,7 @@ for infileName in infileNames:
             jobEnergyData =  getEnergies(jobText)
             jobSpins = getSpins(jobText)
             jobEigen = 1 #getHessianEigen(jobText)
-            
+
             if(jobEnergyData != None and jobEigen != None):
                 jobGSEnergy, jobCISEnergies, jobTDHFEnergies = jobEnergyData
 
@@ -189,14 +189,14 @@ for infileName in infileNames:
                 dists.append(jobDist)
                 CISEnergies.append(jobCISEnergies)
                 TDHFEnergies.append(jobTDHFEnergies)
-                spins.append(jobSpins)
+                spins.append(jobSpins[:nRoots])
                 eigens.append(jobEigen)
             else:
                 if(jobDist != None):
                     nRemoved += 1
                     print("Removed dist: %f" % jobDist)
 
-            
+
             #move buffer pointer to start of next job:
             jobStart = jobEnd + jobMatchOffset
 
@@ -227,7 +227,7 @@ for infileName in infileNames:
     np.savetxt("%s_eigenPlot.csv" % title, eigenData, delimiter=',')
 
     # output spins if not restricted
-#    if(not np.all(spins == None)):
-#        spinData = np.hstack((dists.reshape(-1,1), spins))
-#        np.savetxt("%s_s2Plot.csv" % title, spinData, delimiter=',')
-        
+    if(not np.all(spins == None)):
+        spinData = np.hstack((dists.reshape(-1,1), spins))
+        np.savetxt("%s_s2Plot.csv" % title, spinData, delimiter=',')
+

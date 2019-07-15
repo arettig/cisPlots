@@ -126,7 +126,7 @@ plot(x, Energies_sfsCIS, spins, nStates, "H2_min_sfs.eps")
 
 # Plot exact
 nStates = 4
-exact_CIS_Edata = np.genfromtxt(open("H2_min/H2_exact_CISEnergyPlot.csv", "r"), delimiter=",")
+exact_CIS_Edata = np.genfromtxt(open("H2_min/H2_exact_CISEnergyPlot.csv", "r"))
 exact_Sdata = np.genfromtxt(open("H2_min/H2_exact_s2Plot.csv", "r"), delimiter=",")
 
 x = exact_CIS_Edata[:,0]
@@ -488,8 +488,8 @@ nStates = 3
 ymin = -0.99
 ymax = -0.6
 
-TDA_Edata = np.genfromtxt(open("H2_min/H2_pbe_CISEnergyPlot.csv", "r"), delimiter=",")
-TDDFT_Edata = np.genfromtxt(open("H2_min/H2_pbe_TDHFEnergyPlot.csv", "r"), delimiter=",")
+TDA_Edata = np.genfromtxt(open("H2_min/H2_pbe_CISEnergyPlot.csv", "r"))
+TDDFT_Edata = np.genfromtxt(open("H2_min/H2_pbe_TDHFEnergyPlot.csv", "r"), delimiter=',')
 Sdata = np.genfromtxt(open("H2_min/H2_pbe_s2Plot.csv", "r"), delimiter=",")
 
 
@@ -511,17 +511,8 @@ plot(x, Energies_TDDFT, spins, nStates, "H2_min_pbe_rpa.eps")
 
 
 
-
-
-
-
-
-
-
-
-
-
 # sfs
+# augtz
 nStates = 4
 ymin = -0.99
 ymax = -0.6
@@ -534,6 +525,21 @@ Energies_TDA = TDA_Edata[:,2:]
 spins = Sdata[:,2:]
 
 plot(x, Energies_TDA, spins, nStates, "H2_tz_pbe_sfs.eps")
+
+
+# sto-3g
+nStates = 1
+ymin = -0.99
+ymax = -0.6
+
+TDA_Edata = np.genfromtxt(open("H2_min/H2_pbe_sfs_CISEnergyPlot.csv", "r"))
+Sdata = np.genfromtxt(open("H2_min/H2_pbe_sfs_s2Plot.csv", "r"), delimiter=",")
+
+x = TDA_Edata[:,0]
+Energies_TDA = TDA_Edata[:,2:]
+spins = Sdata[:,2:]
+
+plot(x, Energies_TDA, spins, nStates, "H2_min_pbe_sfs.eps")
 
 
 

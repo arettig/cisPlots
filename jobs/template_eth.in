@@ -1,0 +1,40 @@
+$comment
+Excited state CIS calculations on CH3CH3
+$end
+
+$molecule
+0 3
+C	0.0000	0.0000	dist1
+C	0.0000	0.0000	-dist1
+H	-1.0192	0.0000	dist2
+H	0.5096	0.8826	dist2
+H	0.5096	-0.8826	dist2
+H	1.0192	0.0000	-dist2
+H	-0.5096	-0.8826	-dist2
+H	-0.5096	0.8826	-dist2
+$end
+
+
+$rem
+method hf
+basis aug-cc-pvdz
+jobtype sp
+unrestricted false
+scf_guess read
+
+cis_n_roots 15
+max_cis_cycles 200
+spin_flip_xcis true
+
+
+gen_scfman true
+scf_algorithm gdm
+max_scf_cycles 500
+scf_convergence 10
+internal_stability_iter 15
+internal_stability_davidson_iter 200
+
+thresh 14
+symmetry false
+sym_ignore true
+$end
